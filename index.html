@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ReflexLab</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDrnirIh0ilbjNaI-QwKkq0YbEb9DF4Svc",
+  authDomain: "reflexlab-eaa4f.firebaseapp.com",
+  projectId: "reflexlab-eaa4f",
+  storageBucket: "reflexlab-eaa4f.firebasestorage.app",
+  messagingSenderId: "443239972835",
+  appId: "1:443239972835:web:91eb56886238ea623e2ad6"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+let user=null;
+let profile=null;
+let scores=[];
+</script>
+
+<style>
+body{
+  margin:0;
+  font-family:Arial;
+  background:#070812;
+  color:white;
+}
+
+.top{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  padding:12px;
+  background:#0d0f1d;
+}
+
+button{
+  background:none;
+  border:1px solid #00ffcc;
+  color:#00ffcc;
+  padding:8px 12px;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+button:hover{
+  background:#00ffcc;
+  color:black;
+}
+
+.page{display:none;padding:20px;}
+.active{display:block;}
+
+.card{
+  width:420px;
+  margin:20px auto;
+  padding:20px;
+  background:#141428;
+  border-radius:12px;
+  text-align:center;
+}
+
+.box{
+  width:420px;
+  height:420px;
+  background:#101022;
+  margin:auto;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  position:relative;
+}
+
+.dot{
+  width:28px;
+  height:28px;
+  background:red;
+  border-radius:50%;
+  position:absolute;
+}
+</style>
+</head>
+
+<body>
+
+<div class="top">
+<button onclick="nav('games')">Games</button>
+<button onclick="nav('board')">Leaderboard</button>
+<button onclick="nav('profile')">Profile</button>
+
+<button onclick="login()">Login</button>
+<button onclick="logout()">Logout</button>
+
+<span id="status">Not logged in</span>
+</div>
+
+<!-- GAMES -->
+<div id="games" class="page active">
+
+<div class="card">
+<h3>Reaction</h3>
+<div id="rxBox" class="box" onclick="reaction()">click</div>
+<div id="rxOut"></div>
+</div>
+
+<div class="card">
+<h3>Aim</h3>
+<div id="aimBox" class="box"></div>
+<button onclick="startAim()">start</button>
+</div>
+
+<div class="card">
+<h3>Memory</h3>
+<h2 id="seq"></h2>
+<input id="mem">
+<button onclick="memStart()">start</button>
+<button onclick="memCheck()">check</button>
+</div>
+
+</div>
+
+<!-- BOARD -->
+<div id="board" class="page">
+<div class="card">
+<div id="list"></div>
+</div>
+</div>
+
+<!-- PROFILE -->
+<div id="profile" class="page">
+<div class="card">
+<h2 id="pName">Profile</h2>
+<div id="stats"></div>
+</div>
+</div>
+
+<script>
+
+/* NAV */
+function nav(x){
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.getElementById(x).classList.add("active");
+}
+
+/* AUTH */
+auth.onAuthStateChanged(async u=>{
+  user=u;
+
+  if(!user){
+    document.getElementById("status").innerText="Not logged in";
+    return;
+  }
+
+  const ref=db.collection("users").doc(user.uid);
+  const s=await ref.get();
+
+  if(!s.exists){
+    await ref.set({name:user.displayName,last:0});
+  }
+
+  profile=(await ref.get()).data();
+
+  document.getElementById("status").innerText="Logged in: "+profile.name;
+
+  loadBoard();
+  loadProfile();
+});
+
+/* LOGIN */
+function login(){
+  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+}
+function logout(){auth.signOut();}
+
+/* SCORE */
+function save(test,val){
+  if(!user) return;
+
+  db.collection("scores").add({
+    uid:user.uid,
+    name:profile.name,
+    test,
+    val,
+    t:Date.now()
+  });
+}
+
+/* LEADERBOARD */
+function loadBoard(){
+  db.collection("scores")
+  .onSnapshot(s=>{
+    scores=[];
+
+    s.forEach(d=>scores.push(d.data()));
+
+    let sorted=[...scores].sort((a,b)=>a.val-b.val);
+
+    document.getElementById("list").innerHTML=
+      sorted.slice(0,10).map(x=>
+        `<div>${x.name} - ${x.val}</div>`
+      ).join("");
+  });
+}
+
+/* PROFILE + PERCENTILE */
+function loadProfile(){
+  setInterval(()=>{
+    if(!user) return;
+
+    let mine=scores.filter(x=>x.uid===user.uid);
+    if(!mine.length) return;
+
+    let best=Math.min(...mine.map(x=>x.val));
+    let better=scores.filter(x=>x.val>best).length;
+
+    let pct=Math.round((better/scores.length)*100);
+
+    document.getElementById("pName").innerText=profile.name;
+    document.getElementById("stats").innerText=
+      "Faster than "+pct+"% of players";
+  },1000);
+}
+
+/* REACTION */
+let state=0,start;
+
+function reaction(){
+  let b=document.getElementById("rxBox");
+
+  if(state===0){
+    state=1;
+    b.innerText="wait";
+
+    setTimeout(()=>{
+      start=performance.now();
+      state=2;
+      b.innerText="click";
+    },1000+Math.random()*2500);
+  } else {
+    let rt=Math.round(performance.now()-start);
+    document.getElementById("rxOut").innerText=rt+"ms";
+    save("reaction",rt);
+    state=0;
+    b.innerText="click";
+  }
+}
+
+/* AIM */
+let active=false,score=0;
+
+function startAim(){
+  score=0;
+  active=true;
+
+  let box=document.getElementById("aimBox");
+  box.innerHTML="";
+
+  spawn();
+
+  setTimeout(()=>{
+    active=false;
+    save("aim",score);
+    box.innerHTML="";
+  },30000);
+}
+
+function spawn(){
+  if(!active) return;
+
+  let box=document.getElementById("aimBox");
+  let d=document.createElement("div");
+
+  d.className="dot";
+  d.style.left=Math.random()*380+"px";
+  d.style.top=Math.random()*380+"px";
+
+  d.onclick=()=>{
+    score++;
+    d.remove();
+    spawn();
+  };
+
+  box.appendChild(d);
+}
+
+/* MEMORY */
+let lvl=1,seq="";
+
+function memStart(){
+  seq="";
+  for(let i=0;i<lvl;i++) seq+=Math.floor(Math.random()*9);
+
+  document.getElementById("seq").innerText=seq;
+
+  setTimeout(()=>{
+    document.getElementById("seq").innerText="----";
+  },1000);
+}
+
+function memCheck(){
+  let v=document.getElementById("mem").value;
+
+  if(v===seq) lvl++;
+  else lvl=1;
+}
+
+</script>
+
+</body>
+</html>
