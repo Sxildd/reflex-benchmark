@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ReflexLab</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial;
+  background: #070712;
+  color: #00ffcc;
+}
+
+/* ================= LANDING ================= */
+.hero {
+  text-align: center;
+  padding: 60px 20px;
+  background: radial-gradient(circle at top, #120018, #000);
+}
+
+.hero h1 {
+  font-size: 48px;
+  text-shadow: 0 0 20px #00ffcc;
+}
+
+.hero p {
+  opacity: 0.8;
+}
+
+.cta {
+  margin-top: 20px;
+  padding: 12px 20px;
+  border: 1px solid #00ffcc;
+  background: #111;
+  color: #00ffcc;
+  cursor: pointer;
+}
+
+/* ================= APP ================= */
+.app {
+  display: none;
+  padding: 20px;
+}
+
+.nav {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+button {
+  background: #111;
+  border: 1px solid #00ffcc;
+  color: #00ffcc;
+  padding: 10px;
+  cursor: pointer;
+}
+
+button:hover {
+  box-shadow: 0 0 10px #00ffcc;
+}
+
+.panel {
+  width: 500px;
+  margin: auto;
+  background: #111;
+  border: 1px solid #00ffcc33;
+  padding: 20px;
+  border-radius: 10px;
+}
+
+/* ================= TEST BOX ================= */
+#box {
+  width: 320px;
+  height: 320px;
+  margin: 20px auto;
+  background: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  border: 2px solid #00ffcc;
+}
+
+.green { background: #00ff88 !important; }
+.red { background: #ff0044 !important; }
+
+/* AIM */
+#aimArea {
+  width: 320px;
+  height: 320px;
+  margin: auto;
+  position: relative;
+  background: #0a0a12;
+  border: 1px solid #00ffcc33;
+}
+
+.target {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: red;
+  position: absolute;
+  cursor: crosshair;
+}
+</style>
+</head>
+
+<body>
+
+<!-- ================= LANDING PAGE ================= -->
+<div class="hero" id="landing">
+  <h1>REFLEX LAB</h1>
+  <p>Measure your reaction speed, memory, and aim precision.</p>
+  <button class="cta" onclick="startApp()">Enter App</button>
+</div>
+
+<!-- ================= APP ================= -->
+<div class="app" id="app">
+
+<div class="nav">
+<button onclick="show('reaction')">Reaction</button>
+<button onclick="show('memory')">Memory</button>
+<button onclick="show('aim')">Aim</button>
+</div>
+
+<div class="panel">
+
+<!-- REACTION -->
+<div id="reaction">
+  <h2>Reaction Test</h2>
+  <div id="box">Click to start</div>
+  <div id="reactionResult"></div>
+</div>
+
+<!-- MEMORY -->
+<div id="memory" style="display:none;">
+  <h2>Memory Test (gets harder)</h2>
+  <p>Remember the sequence:</p>
+  <h3 id="seq"></h3>
+  <button onclick="startMemory()">Start</button>
+  <input id="memInput">
+  <button onclick="checkMemory()">Check</button>
+  <div id="memResult"></div>
+</div>
+
+<!-- AIM -->
+<div id="aim" style="display:none;">
+  <h2>Aim Test (30s)</h2>
+  <p>Click as many targets as possible</p>
+  <div id="aimArea"></div>
+  <div id="aimHUD"></div>
+  <button onclick="startAim()">Start 30s Run</button>
+</div>
+
+</div>
+</div>
+
+<script>
+
+// ================= SAAS START =================
+function startApp(){
+  document.getElementById("landing").style.display="none";
+  document.getElementById("app").style.display="block";
+}
+
+// ================= NAV =================
+function show(id){
+  document.querySelectorAll(".panel > div").forEach(d=>{
+    d.style.display="none";
+  });
+  document.getElementById(id).style.display="block";
+}
+
+// ================= REACTION =================
+let state="idle", startTime, timeout;
+const box=document.getElementById("box");
+
+box.onclick=()=>{
+  if(state==="idle"){
+    state="waiting";
+    box.innerText="Wait...";
+
+    timeout=setTimeout(()=>{
+      box.classList.add("green");
+      box.innerText="CLICK!";
+      startTime=performance.now();
+      state="ready";
+    },1000+Math.random()*4000);
+  }
+
+  else if(state==="waiting"){
+    clearTimeout(timeout);
+    box.classList.add("red");
+    box.innerText="Too early!";
+    setTimeout(resetBox,700);
+  }
+
+  else if(state==="ready"){
+    let rt=performance.now()-startTime;
+    document.getElementById("reactionResult").innerText=
+      "Reaction: "+Math.round(rt)+"ms";
+    setTimeout(resetBox,700);
+    state="idle";
+  }
+};
+
+function resetBox(){
+  box.classList.remove("green","red");
+  box.innerText="Click to start";
+}
+
+// ================= MEMORY (GETS HARDER) =================
+let level=1;
+let sequence="";
+
+function startMemory(){
+  sequence="";
+  for(let i=0;i<level;i++){
+    sequence+=Math.floor(Math.random()*9);
+  }
+  document.getElementById("seq").innerText=sequence;
+
+  setTimeout(()=>{
+    document.getElementById("seq").innerText="????";
+  },1500);
+}
+
+function checkMemory(){
+  let input=document.getElementById("memInput").value;
+
+  if(input===sequence){
+    document.getElementById("memResult").innerText="Correct! Level up";
+    level++;
+  } else {
+    document.getElementById("memResult").innerText="Wrong! Resetting";
+    level=1;
+  }
+}
+
+// ================= AIM (30 SECOND TIMER) =================
+let score=0;
+let timer;
+let active=false;
+
+function startAim(){
+  score=0;
+  active=true;
+  document.getElementById("aimArea").innerHTML="";
+  document.getElementById("aimHUD").innerText="Score: 0";
+
+  spawnTarget();
+
+  timer=setTimeout(()=>{
+    active=false;
+    document.getElementById("aimArea").innerHTML="";
+    document.getElementById("aimHUD").innerText="Final Score: "+score;
+  },30000);
+}
+
+function spawnTarget(){
+  if(!active) return;
+
+  const area=document.getElementById("aimArea");
+  const t=document.createElement("div");
+  t.className="target";
+
+  t.style.left=Math.random()*290+"px";
+  t.style.top=Math.random()*290+"px";
+
+  t.onclick=()=>{
+    score++;
+    document.getElementById("aimHUD").innerText="Score: "+score;
+    t.remove();
+    spawnTarget();
+  };
+
+  area.appendChild(t);
+}
+
+</script>
+
+</body>
+</html>
