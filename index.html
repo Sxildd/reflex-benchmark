@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ReflexLab SaaS</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDrnirIh0ilbjNaI-QwKkq0YbEb9DF4Svc",
+  authDomain: "reflexlab-eaa4f.firebaseapp.com",
+  projectId: "reflexlab-eaa4f",
+  storageBucket: "reflexlab-eaa4f.firebasestorage.app",
+  messagingSenderId: "443239972835",
+  appId: "1:443239972835:web:91eb56886238ea623e2ad6",
+  measurementId: "G-NEMQ4L5L81"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+let user = null;
+
+auth.onAuthStateChanged(u=>{
+  user = u;
+  document.getElementById("user").innerText =
+    u ? `Logged in: ${u.displayName}` : "Not logged in";
+});
+
+function login(){
+  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+}
+
+function logout(){
+  auth.signOut();
+}
+
+/* SAVE SCORE */
+function submitScore(test, score){
+  if(!user) return alert("Login first");
+
+  db.collection("leaderboard").add({
+    uid: user.uid,
+    name: user.displayName,
+    test,
+    score,
+    time: Date.now()
+  });
+}
+
+/* LEADERBOARD */
+function loadLeaderboard(test){
+  db.collection("leaderboard")
+    .where("test","==",test)
+    .orderBy("score")
+    .limit(10)
+    .onSnapshot(snap=>{
+      let html="";
+      snap.forEach(d=>{
+        const data=d.data();
+        html+=`<div>${data.name}: ${data.score}</div>`;
+      });
+      document.getElementById("leaderboard").innerHTML=html;
+    });
+}
+</script>
+
+<style>
+body{
+  margin:0;
+  font-family:Arial;
+  background:#0a0a12;
+  color:white;
+  text-align:center;
+}
+
+button{
+  padding:10px 15px;
+  margin:5px;
+  cursor:pointer;
+}
+
+.card{
+  background:#151525;
+  margin:20px auto;
+  padding:20px;
+  width:320px;
+  border-radius:10px;
+}
+
+#box{
+  width:220px;
+  height:220px;
+  margin:10px auto;
+  background:#222;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.green{background:#00ff88 !important;}
+.red{background:#ff3355 !important;}
+
+#aimArea{
+  width:220px;
+  height:220px;
+  margin:auto;
+  position:relative;
+  background:#111;
+}
+
+.target{
+  width:25px;
+  height:25px;
+  border-radius:50%;
+  background:red;
+  position:absolute;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>ReflexLab SaaS</h1>
+
+<div id="user">Not logged in</div>
+
+<button onclick="login()">Login</button>
+<button onclick="logout()">Logout</button>
+
+<!-- REACTION -->
+<div class="card">
+  <h2>Reaction Test</h2>
+  <div id="box">Click to start</div>
+  <div id="reactionResult"></div>
+</div>
+
+<!-- AIM -->
+<div class="card">
+  <h2>Aim Test</h2>
+  <div id="aimArea"></div>
+  <button onclick="startAim()">Start Aim</button>
+</div>
+
+<!-- MEMORY -->
+<div class="card">
+  <h2>Memory Test</h2>
+  <h3 id="seq"></h3>
+  <input id="memInput">
+  <button onclick="startMemory()">Start</button>
+  <button onclick="checkMemory()">Check</button>
+</div>
+
+<!-- LEADERBOARD -->
+<div class="card">
+  <h2>Leaderboard</h2>
+  <div id="leaderboard"></div>
+</div>
+
+<script>
+
+/* ================= REACTION ================= */
+let state="idle", startTime, timeout;
+const box=document.getElementById("box");
+
+box.onclick=()=>{
+  if(state==="idle"){
+    state="waiting";
+    box.innerText="Wait...";
+
+    timeout=setTimeout(()=>{
+      startTime=performance.now();
+      box.innerText="CLICK!";
+      state="ready";
+      box.classList.add("green");
+    },1000+Math.random()*3000);
+  }
+
+  else if(state==="ready"){
+    let rt=Math.round(performance.now()-startTime);
+    document.getElementById("reactionResult").innerText=rt+"ms";
+
+    submitScore("reaction", rt);
+
+    state="idle";
+    box.innerText="Click to start";
+    box.classList.remove("green");
+  }
+};
+
+/* ================= AIM ================= */
+let score=0;
+let active=false;
+
+function startAim(){
+  score=0;
+  active=true;
+  document.getElementById("aimArea").innerHTML="";
+  spawnTarget();
+
+  setTimeout(()=>{
+    active=false;
+    submitScore("aim", score);
+    document.getElementById("aimArea").innerHTML="";
+  },30000);
+}
+
+function spawnTarget(){
+  if(!active) return;
+
+  const area=document.getElementById("aimArea");
+  const t=document.createElement("div");
+  t.className="target";
+
+  t.style.left=Math.random()*190+"px";
+  t.style.top=Math.random()*190+"px";
+
+  t.onclick=()=>{
+    score++;
+    t.remove();
+    spawnTarget();
+  };
+
+  area.appendChild(t);
+}
+
+/* ================= MEMORY ================= */
+let level=1, sequence="";
+
+function startMemory(){
+  sequence="";
+  for(let i=0;i<level;i++){
+    sequence+=Math.floor(Math.random()*9);
+  }
+  document.getElementById("seq").innerText=sequence;
+
+  setTimeout(()=>{
+    document.getElementById("seq").innerText="????";
+  },1200);
+}
+
+function checkMemory(){
+  let input=document.getElementById("memInput").value;
+
+  if(input===sequence){
+    level++;
+  }else{
+    level=1;
+  }
+}
+
+/* ================= INIT ================= */
+loadLeaderboard("reaction");
+
+</script>
+
+</body>
+</html>
