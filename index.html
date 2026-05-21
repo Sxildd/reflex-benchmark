@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ReflexLab</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDrnirIh0ilbjNaI-QwKkq0YbEb9DF4Svc",
+  authDomain: "reflexlab-eaa4f.firebaseapp.com",
+  projectId: "reflexlab-eaa4f",
+  storageBucket: "reflexlab-eaa4f.firebasestorage.app",
+  messagingSenderId: "443239972835",
+  appId: "1:443239972835:web:91eb56886238ea623e2ad6"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+let user = null;
+let profile = null;
+let allScores = [];
+
+/* AUTH STATE */
+auth.onAuthStateChanged(async u=>{
+  user = u;
+
+  if(!user){
+    document.getElementById("status").innerText = "Not logged in";
+    return;
+  }
+
+  const ref = db.collection("users").doc(user.uid);
+  const snap = await ref.get();
+
+  if(!snap.exists){
+    await ref.set({
+      name: user.displayName,
+      lastChange: 0
+    });
+  }
+
+  profile = (await ref.get()).data();
+
+  document.getElementById("status").innerText = "Logged in: " + profile.name;
+
+  loadScores();
+});
+
+/* LOGIN (FIXED FOR GITHUB PAGES) */
+function login(){
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithRedirect(provider);
+}
+
+function logout(){
+  auth.signOut();
+}
+
+/* HANDLE REDIRECT RESULT */
+auth.getRedirectResult()
+  .then(res=>{
+    if(res.user){
+      console.log("Logged in:", res.user);
+    }
+  })
+  .catch(console.error);
+
+/* SCORE SAVE */
+function save(test, val){
+  if(!user) return;
+
+  db.collection("scores").add({
+    uid: user.uid,
+    name: profile.name,
+    test,
+    val,
+    t: Date.now()
+  });
+}
+
+/* LOAD SCORES */
+function loadScores(){
+  db.collection("scores")
+    .onSnapshot(snap=>{
+      allScores = [];
+
+      snap.forEach(d=>{
+        allScores.push(d.data());
+      });
+
+      renderBoard();
+      renderProfile();
+    });
+}
+
+/* BOARD */
+function renderBoard(){
+  let sorted = [...allScores].sort((a,b)=>a.val-b.val);
+
+  document.getElementById("board").innerHTML =
+    sorted.slice(0,10).map(x=>
+      `<div>${x.name} — ${x.val}</div>`
+    ).join("");
+}
+
+/* PROFILE + PERCENTILE */
+function renderProfile(){
+  if(!user) return;
+
+  let mine = allScores.filter(x=>x.uid === user.uid);
+  if(!mine.length) return;
+
+  let best = Math.min(...mine.map(x=>x.val));
+  let better = allScores.filter(x=>x.val > best).length;
+
+  let pct = Math.round((better / allScores.length) * 100);
+
+  document.getElementById("profileName").innerText = profile.name;
+  document.getElementById("percentile").innerText =
+    "Faster than ~" + pct + "% of players";
+}
+
+/* NAV */
+function show(tab){
+  document.querySelectorAll(".tab").forEach(t=>t.style.display="none");
+  document.getElementById(tab).style.display="block";
+}
+
+/* REACTION */
+let state=0,start;
+
+function reactionClick(){
+  let box=document.getElementById("rx");
+
+  if(state===0){
+    state=1;
+    box.innerText="wait...";
+
+    setTimeout(()=>{
+      start = performance.now();
+      state=2;
+      box.innerText="CLICK!";
+    },1000+Math.random()*2500);
+  } else {
+    let rt = Math.round(performance.now()-start);
+    save("reaction", rt);
+    box.innerText = rt + "ms";
+    state=0;
+  }
+}
+
+/* AIM */
+let score=0, active=false;
+
+function startAim(){
+  score=0;
+  active=true;
+
+  let box=document.getElementById("aim");
+  box.innerHTML="";
+
+  spawn();
+
+  setTimeout(()=>{
+    active=false;
+    save("aim", score);
+    box.innerHTML="";
+  },30000);
+}
+
+function spawn(){
+  if(!active) return;
+
+  let box=document.getElementById("aim");
+  let d=document.createElement("div");
+
+  d.className="dot";
+  d.style.left=Math.random()*380+"px";
+  d.style.top=Math.random()*380+"px";
+
+  d.onclick=()=>{
+    score++;
+    d.remove();
+    spawn();
+  };
+
+  box.appendChild(d);
+}
+
+/* MEMORY */
+let lvl=1, seq="";
+
+function memStart(){
+  seq="";
+  for(let i=0;i<lvl;i++) seq+=Math.floor(Math.random()*9);
+
+  document.getElementById("seq").innerText=seq;
+
+  setTimeout(()=>{
+    document.getElementById("seq").innerText="----";
+  },1000);
+}
+
+function memCheck(){
+  let v=document.getElementById("mem").value;
+
+  lvl = (v===seq) ? lvl+1 : 1;
+}
+
+</script>
+
+<style>
+body{
+  margin:0;
+  font-family:Arial;
+  background:#070816;
+  color:white;
+}
+
+.top{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  padding:12px;
+  background:#0e0f1c;
+}
+
+button{
+  background:transparent;
+  border:1px solid #00ffcc;
+  color:#00ffcc;
+  padding:8px 12px;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+button:hover{
+  background:#00ffcc;
+  color:black;
+}
+
+.tab{display:none;padding:20px;}
+.show{display:block;}
+
+.card{
+  width:420px;
+  margin:20px auto;
+  padding:20px;
+  background:#14142a;
+  border-radius:12px;
+  text-align:center;
+}
+
+.box{
+  width:420px;
+  height:420px;
+  margin:auto;
+  background:#101020;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:12px;
+  cursor:pointer;
+  position:relative;
+}
+
+.dot{
+  width:28px;
+  height:28px;
+  background:red;
+  border-radius:50%;
+  position:absolute;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="top">
+<button onclick="show('games')">Games</button>
+<button onclick="show('board')">Leaderboard</button>
+<button onclick="show('profile')">Profile</button>
+
+<button onclick="login()">Login</button>
+<button onclick="logout()">Logout</button>
+</div>
+
+<div id="status" style="text-align:center;padding:10px;">Not logged in</div>
+
+<!-- GAMES -->
+<div id="games" class="tab show">
+
+<div class="card">
+<h3>Reaction</h3>
+<div id="rx" class="box" onclick="reactionClick()">click</div>
+</div>
+
+<div class="card">
+<h3>Aim</h3>
+<div id="aim" class="box"></div>
+<button onclick="startAim()">start</button>
+</div>
+
+<div class="card">
+<h3>Memory</h3>
+<h2 id="seq"></h2>
+<input id="mem">
+<button onclick="memStart()">start</button>
+<button onclick="memCheck()">check</button>
+</div>
+
+</div>
+
+<!-- LEADERBOARD -->
+<div id="board" class="tab">
+<div class="card">
+<div id="board"></div>
+</div>
+</div>
+
+<!-- PROFILE -->
+<div id="profile" class="tab">
+<div class="card">
+<h2 id="profileName"></h2>
+<div id="percentile"></div>
+</div>
+</div>
+
+</body>
+</html>
